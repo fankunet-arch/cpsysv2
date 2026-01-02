@@ -36,6 +36,40 @@ if (!isset($_SESSION['captcha_code']) || $captcha !== $_SESSION['captcha_code'])
 // CAPTCHA is correct, unset it so it can't be used again
 unset($_SESSION['captcha_code']);
 
+// --- [H5 FIX] Rate Limiting Check ---
+$ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+$max_attempts = 5;
+$lockout_minutes = 15;
+
+try {
+    // 检查IP是否被锁定
+    $stmt_check = $pdo->prepare("
+        SELECT COUNT(*) as attempts
+        FROM audit_logs
+        WHERE action = 'login.failed'
+          AND ip = ?
+          AND created_at > DATE_SUB(UTC_TIMESTAMP(), INTERVAL :minutes MINUTE)
+    ");
+    $stmt_check->execute([$ip, ':minutes' => $lockout_minutes]);
+    $result = $stmt_check->fetch();
+
+    if ($result['attempts'] >= $max_attempts) {
+        // 记录封禁审计
+        if (function_exists('log_audit_action')) {
+            log_audit_action($pdo, 'login.blocked', 'cpsys_users', null, null, [
+                'ip' => $ip,
+                'username' => $username,
+                'reason' => 'Too many failed attempts'
+            ]);
+        }
+        header('Location: ../login.php?error=6');  // 新增错误码6：账户锁定
+        exit;
+    }
+} catch (PDOException $e) {
+    error_log("Rate limit check failed: " . $e->getMessage());
+    // 继续执行，不因rate limit检查失败而中断登录
+}
+
 // --- User Authentication (FIXED) ---
 try {
     $stmt = $pdo->prepare("SELECT id, username, password_hash, display_name, role_id FROM cpsys_users WHERE username = ? AND is_active = 1");
@@ -55,12 +89,29 @@ try {
         
         $update_stmt = $pdo->prepare("UPDATE cpsys_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?");
         $update_stmt->execute([$user['id']]);
-        
+
+        // [H5 FIX] 登录成功，记录审计日志
+        if (function_exists('log_audit_action')) {
+            log_audit_action($pdo, 'login.success', 'cpsys_users', $user['id'], null, [
+                'ip' => $ip,
+                'username' => $username
+            ]);
+        }
+
         header('Location: ../index.php');
         exit;
     }
-    
+
     // [GEMINI SECURITY FIX V1.0] 用户名或密码无效
+    // [H5 FIX] 记录失败的审计日志
+    if (function_exists('log_audit_action')) {
+        log_audit_action($pdo, 'login.failed', 'cpsys_users', null, null, [
+            'ip' => $ip,
+            'username' => $username,
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown'
+        ]);
+    }
+
     header('Location: ../login.php?error=1');
     exit;
 
