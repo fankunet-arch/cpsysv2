@@ -914,7 +914,7 @@ if (!function_exists('getAllExpiryItems')) {
     function getAllExpiryItems(PDO $pdo): array {
         try {
             $sql = "
-                SELECT 
+                SELECT
                     e.*,
                     s.store_name,
                     mt.material_name,
@@ -930,6 +930,84 @@ if (!function_exists('getAllExpiryItems')) {
         } catch (PDOException $e) {
             error_log("Error getAllExpiryItems: " . $e->getMessage());
             return [];
+        }
+    }
+}
+
+/** ========== KDS Service Functions (For External POS/KDS System API) ========== */
+
+/**
+ * 获取KDS字典数据（杯型、冰度、甜度、单位、状态）
+ * [C1 FIX] 为cpsys_registry_kds.php的handle_kds_dicts提供服务函数
+ * 用于外部POS/KDS系统调用
+ */
+if (!function_exists('service_get_kds_dicts')) {
+    function service_get_kds_dicts(PDO $pdo, string $lang = 'zh'): array {
+        return [
+            'cups' => getAllCups($pdo),
+            'ice_options' => getAllIceOptions($pdo),
+            'sweetness_options' => getAllSweetnessOptions($pdo),
+            'units' => getAllUnits($pdo),
+            'statuses' => getAllStatuses($pdo),
+            'timestamp' => gmdate('Y-m-d H:i:s'),  // UTC时间戳
+        ];
+    }
+}
+
+/**
+ * 获取门店菜单快照（包含分类、菜单项、变体、加料等）
+ * [C1 FIX] 为cpsys_registry_kds.php的handle_kds_menu提供服务函数
+ * 用于外部POS/KDS系统调用
+ */
+if (!function_exists('service_get_menu_snapshot')) {
+    function service_get_menu_snapshot(PDO $pdo, int $store_id, string $lang = 'zh'): array {
+        try {
+            // 验证门店是否存在
+            $store = getStoreById($pdo, $store_id);
+            if (!$store) {
+                return [
+                    'error' => 'Store not found',
+                    'store_id' => $store_id,
+                ];
+            }
+
+            // 获取所有分类
+            $categories = getAllPosCategories($pdo);
+
+            // 获取所有菜单项（包含变体）
+            $menu_items = getAllMenuItems($pdo);
+
+            // 为每个菜单项附加变体信息
+            foreach ($menu_items as &$item) {
+                $item['variants'] = getAllVariantsByMenuItemId($pdo, (int)$item['id']);
+            }
+
+            // 获取所有加料选项
+            $addons = getAllAddons($pdo);
+
+            // 获取所有标签
+            $tags = getAllPosTags($pdo);
+
+            // 获取当前活跃的促销
+            $promotions = array_filter(getAllPromotions($pdo), function($promo) {
+                return $promo['promo_is_active'] == 1;
+            });
+
+            return [
+                'store_info' => $store,
+                'categories' => $categories,
+                'menu_items' => $menu_items,
+                'addons' => $addons,
+                'tags' => $tags,
+                'promotions' => $promotions,
+                'sync_time' => gmdate('Y-m-d H:i:s'),  // UTC时间戳
+            ];
+        } catch (PDOException $e) {
+            error_log("Error service_get_menu_snapshot: " . $e->getMessage());
+            return [
+                'error' => 'Database error',
+                'message' => $e->getMessage(),
+            ];
         }
     }
 }

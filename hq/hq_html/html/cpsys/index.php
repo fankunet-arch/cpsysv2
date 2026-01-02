@@ -35,60 +35,9 @@ require_once realpath(__DIR__ . '/../../app/helpers/datetime_helper.php');
 // 包含 'auth_core.php' 已自动执行检查。
 
 // -----------------------------------------------------------------
-// [!! 修复 3.1 !!] START: 临时 Fallback 函数
-// -----------------------------------------------------------------
-// 这些函数在 kds_helper.php 中可能已被移除，但旧视图文件仍在引用。
-// 在 index.php 中定义它们，以防止在加载这些视图时出现致命错误。
-
-if (!function_exists('getKdsProductById')) {
-    /**
-     * Fallback for getKdsProductById
-     * (Required by pos_variants_management_view.php)
-     */
-    function getKdsProductById(PDO $pdo, int $id) {
-        $stmt = $pdo->prepare("SELECT id, product_code FROM kds_products WHERE id = ? AND deleted_at IS NULL");
-        $stmt->execute([$id]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
-    }
-}
-
-if (!function_exists('getAllVariantsByMenuItemId')) {
-    /**
-     * Fallback for getAllVariantsByMenuItemId
-     * (Required by kds_sop_rules_view.php and pos_variants_management_view.php)
-     *
-     * [!! 修复 3.2 !!] 修正别名说明
-     * [Fix 4.0] 兜底：product_sku = COALESCE(p.product_code, mi.product_code)
-     * recipe_name_zh = COALESCE(pt_zh.product_name, pt_es.product_name)
-     */
-    function getAllVariantsByMenuItemId(PDO $pdo, int $menu_item_id): array {
-        $sql = "
-            SELECT 
-                v.*,
-                mi.product_code AS product_code,
-                COALESCE(p.product_code, mi.product_code) AS product_sku,
-                COALESCE(pt_zh.product_name, pt_es.product_name) AS recipe_name_zh
-            FROM pos_item_variants v
-            INNER JOIN pos_menu_items mi
-                ON v.menu_item_id = mi.id
-            LEFT JOIN kds_products p
-                ON p.product_code = mi.product_code
-               AND p.deleted_at IS NULL
-            LEFT JOIN kds_product_translations pt_zh
-                ON pt_zh.product_id = p.id AND pt_zh.language_code = 'zh-CN'
-            LEFT JOIN kds_product_translations pt_es
-                ON pt_es.product_id = p.id AND pt_es.language_code = 'es-ES'
-            WHERE v.menu_item_id = ?
-              AND v.deleted_at IS NULL
-            ORDER BY v.sort_order ASC
-        ";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([$menu_item_id]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-}
-// -----------------------------------------------------------------
-// [!! 修复 3.1 !!] END: 临时 Fallback 函数
+// [M1 FIX] Fallback函数已移至 app/helpers/kds/kds_repo_fix.php
+// kds_helper.php 会自动加载 kds_repo_fix.php，因此无需在此重复定义
+// 被移除的函数: getKdsProductById(), getAllVariantsByMenuItemId()
 // -----------------------------------------------------------------
 
 // --- 3. 数据库连接 ---

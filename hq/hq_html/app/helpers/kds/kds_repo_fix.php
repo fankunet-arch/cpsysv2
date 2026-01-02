@@ -178,3 +178,55 @@ if (!function_exists('getAllBaseProducts')) {
         }
     }
 }
+
+// --- [M1 FIX] Moved from index.php - Product & Variants Fallbacks ---
+
+if (!function_exists('getKdsProductById')) {
+    /**
+     * Fallback for getKdsProductById
+     * Required by: pos_variants_management_view.php
+     * [M1 FIX] Moved from index.php to centralize fallback functions
+     */
+    function getKdsProductById(PDO $pdo, int $id): ?array {
+        $stmt = $pdo->prepare("SELECT id, product_code FROM kds_products WHERE id = ? AND deleted_at IS NULL");
+        $stmt->execute([$id]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+}
+
+if (!function_exists('getAllVariantsByMenuItemId')) {
+    /**
+     * Fallback for getAllVariantsByMenuItemId
+     * Required by: kds_sop_rules_view.php, pos_variants_management_view.php
+     * [M1 FIX] Moved from index.php to centralize fallback functions
+     *
+     * Returns variants with:
+     * - product_sku = COALESCE(p.product_code, mi.product_code)
+     * - recipe_name_zh = COALESCE(pt_zh.product_name, pt_es.product_name)
+     */
+    function getAllVariantsByMenuItemId(PDO $pdo, int $menu_item_id): array {
+        $sql = "
+            SELECT
+                v.*,
+                mi.product_code AS product_code,
+                COALESCE(p.product_code, mi.product_code) AS product_sku,
+                COALESCE(pt_zh.product_name, pt_es.product_name) AS recipe_name_zh
+            FROM pos_item_variants v
+            INNER JOIN pos_menu_items mi
+                ON v.menu_item_id = mi.id
+            LEFT JOIN kds_products p
+                ON p.product_code = mi.product_code
+               AND p.deleted_at IS NULL
+            LEFT JOIN kds_product_translations pt_zh
+                ON pt_zh.product_id = p.id AND pt_zh.language_code = 'zh-CN'
+            LEFT JOIN kds_product_translations pt_es
+                ON pt_es.product_id = p.id AND pt_es.language_code = 'es-ES'
+            WHERE v.menu_item_id = ?
+              AND v.deleted_at IS NULL
+            ORDER BY v.sort_order ASC
+        ";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$menu_item_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+}

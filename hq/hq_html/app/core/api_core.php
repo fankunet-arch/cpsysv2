@@ -25,6 +25,17 @@ if (!defined('ROLE_SUPER_ADMIN')) {
 
 
 /**
+ * [C2 FIX] 验证SQL标识符（表名、列名、排序字段）
+ * 防止SQL注入攻击
+ */
+function validate_sql_identifier(string $str): bool {
+    // 允许：字母、数字、下划线、逗号、空格、点号、括号（用于函数）、DESC/ASC
+    // 不允许：分号、注释符、引号等危险字符
+    return preg_match('/^[a-zA-Z0-9_., ()`]+$/', $str) === 1
+        && !preg_match('/(;|--|\/\*|\*\/|union|select|insert|update|delete|drop|create|alter)/i', $str);
+}
+
+/**
  * 运行 API 网关
  *
  * @param array $registry 完整的 API 资源注册表
@@ -83,7 +94,12 @@ function run_api(array $registry, PDO $pdo): void {
             case 'get':
                 $id = $_GET['id'] ?? null;
                 $cols_str = implode(', ', $config['visible_cols'] ?? ['*']);
-                
+
+                // [C2 FIX] 验证列名，防止SQL注入
+                if (!validate_sql_identifier($cols_str)) {
+                    json_error('配置错误: 无效的列名定义', 500);
+                }
+
                 if ($id) {
                     // 获取单条
                     $stmt = $pdo->prepare("SELECT {$cols_str} FROM {$table} WHERE {$pk} = ? AND {$base_where}");
@@ -93,6 +109,12 @@ function run_api(array $registry, PDO $pdo): void {
                 } else {
                     // 获取列表
                     $order_by = $config['default_order'] ?? "{$pk} ASC";
+
+                    // [C2 FIX] 验证排序字段，防止SQL注入
+                    if (!validate_sql_identifier($order_by)) {
+                        json_error('配置错误: 无效的排序字段定义', 500);
+                    }
+
                     $stmt = $pdo->query("SELECT {$cols_str} FROM {$table} WHERE {$base_where} ORDER BY {$order_by}");
                     json_ok($stmt->fetchAll(PDO::FETCH_ASSOC));
                 }

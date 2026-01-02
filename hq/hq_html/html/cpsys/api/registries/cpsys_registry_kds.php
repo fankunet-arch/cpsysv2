@@ -38,10 +38,9 @@ function handle_kds_sop(PDO $pdo, array $config, array $input_data): void {
 function handle_kds_dicts(PDO $pdo, array $config, array $input_data): void {
     $lang = $input_data['lang'] ?? ($_GET['lang'] ?? ($_POST['lang'] ?? 'zh'));
 
-    // [GEMINI V1.2 NOTE] service_get_kds_dicts is not defined in the provided files.
-    // This handler will fail if called, but it doesn't break the gateway.
+    // [C1 FIX] 现已实现service_get_kds_dicts函数
     if (function_exists('service_get_kds_dicts')) {
-        $data = service_get_kds_dicts($lang);
+        $data = service_get_kds_dicts($pdo, $lang);  // 传入$pdo参数
         json_ok($data); return;
     }
     json_error('KDS dicts service (service_get_kds_dicts) not available', 500);
@@ -53,10 +52,9 @@ function handle_kds_menu(PDO $pdo, array $config, array $input_data): void {
     $lang = $input_data['lang'] ?? ($_GET['lang'] ?? ($_POST['lang'] ?? 'zh'));
     if (!$store_id) { json_error('Missing store_id', 400); return; }
 
-    // [GEMINI V1.2 NOTE] service_get_menu_snapshot is not defined in the provided files.
-    // This handler will fail if called, but it doesn't break the gateway.
+    // [C1 FIX] 现已实现service_get_menu_snapshot函数
     if (function_exists('service_get_menu_snapshot')) {
-        $data = service_get_menu_snapshot((int)$store_id, $lang);
+        $data = service_get_menu_snapshot($pdo, (int)$store_id, $lang);  // 传入$pdo参数
         json_ok($data); return;
     }
     json_error('KDS menu service (service_get_menu_snapshot) not available', 500);
